@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitoramento do veículo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg: #0b1020; --painel: #121a2f; --painel2: #19233d; --borda: #243152;
+      --texto: #e5e9f5; --muted: #8b97b5; --azul: #60a5fa; --verde: #34d399; --ambar: #fbbf24; --verm: #f87171;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--texto);
+                 font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; }
+    button, select { font: inherit; }
+    button { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    button:hover { filter: brightness(1.12); }
+    button.sec { background: var(--painel2); border: 1px solid var(--borda); color: var(--texto); }
+    button.perigo { background: #dc2626; }
+    button.cinza { background: #4b5563; }
+    select { background: var(--painel2); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 7px 10px; max-width: 100%; }
+
+    #app { height: 100%; display: flex; flex-direction: column; }
+    header { flex: 0 0 auto; display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--painel);
+             border-bottom: 1px solid var(--borda); overflow-x: auto; white-space: nowrap; }
+    header .marca { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    nav { display: flex; gap: 4px; margin-left: 6px; }
+    nav button { background: transparent; color: var(--muted); border-radius: 8px; padding: 7px 14px; }
+    nav button.ativo { background: var(--painel2); color: var(--texto); box-shadow: inset 0 0 0 1px var(--borda); }
+    .espaco { flex: 1; }
+    .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
+    .ponto { width: 9px; height: 9px; border-radius: 50%; background: #6b7280; display: inline-block; }
+    .ponto.ok { background: var(--verde); box-shadow: 0 0 0 0 rgba(52,211,153,.6); animation: pulsa 2s infinite; }
+    .ponto.medio { background: var(--ambar); }
+    @keyframes pulsa { 70% { box-shadow: 0 0 0 8px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } }
+
+    @media (max-width: 640px) {
+      header { flex-wrap: wrap; gap: 8px 10px; overflow-x: visible; white-space: normal; }
+      header .espaco { display: none; }
+      nav { order: 5; width: 100%; margin: 0; }
+      nav button { flex: 1; }
+      .status { margin-left: auto; font-size: 11.5px; }
+    }
+    main { flex: 1 1 auto; position: relative; min-height: 0; }
+    section.tela { position: absolute; inset: 0; display: none; overflow: auto; }
+    section.tela.ativa { display: block; }
+    #v-mapa.ativa { display: flex; flex-direction: column; overflow: hidden; }
+
+    .conteudo { max-width: 1100px; margin: 0 auto; padding: 22px 16px 40px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin-bottom: 20px; }
+    .grade { display: grid; gap: 12px; }
+    .kpis { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 14px; }
+    .card { background: var(--painel); border: 1px solid var(--borda); border-radius: 14px; padding: 14px 16px; }
+    .kpi .rot { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .kpi .val { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    .kpi .val small { font-size: 13px; font-weight: 400; color: var(--muted); }
+    .kpi .det { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .duas { grid-template-columns: 1fr 1fr; margin-bottom: 14px; }
+    @media (max-width: 760px) { .duas { grid-template-columns: 1fr; } }
+    .card h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .linha { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px dashed var(--borda); }
+    .linha:last-of-type { border-bottom: 0; }
+    .linha span:first-child { color: var(--muted); }
+    .acoes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .entradas { grid-template-columns: 1fr 1fr; margin: 6px 0 14px; }
+    @media (max-width: 560px) { .entradas { grid-template-columns: 1fr; } }
+    .entrada { text-align: left; background: var(--painel); border: 1px solid var(--borda); border-radius: 16px; padding: 22px 20px;
+               display: flex; flex-direction: column; gap: 6px; color: var(--texto); }
+    .entrada:hover { border-color: var(--azul); filter: none; transform: translateY(-1px); }
+    .entrada .ico { font-size: 28px; }
+    .entrada b { font-size: 18px; }
+    .entrada span { color: var(--muted); font-size: 13px; }
+    .barras { display: flex; align-items: flex-end; gap: 8px; height: 130px; padding-top: 8px; }
+    .barra { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+    .barra i { display: block; width: 100%; max-width: 38px; background: linear-gradient(#60a5fa, #2563eb); border-radius: 6px 6px 2px 2px; min-height: 2px; }
+    .barra i.zero { background: var(--borda); }
+    .barra em { font-style: normal; font-size: 11px; color: var(--muted); }
+    .barra strong { font-size: 11px; font-weight: 600; }
+    .vazio { color: var(--muted); padding: 20px 0; text-align: center; }
+
+    .barra-tabela { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .barra-tabela .tit { font-size: 18px; font-weight: 700; margin-right: auto; }
+    .rolagem { overflow-x: auto; border: 1px solid var(--borda); border-radius: 14px; background: var(--painel); }
+    table { border-collapse: collapse; width: 100%; min-width: 860px; }
+    th, td { padding: 10px 12px; text-align: left; white-space: nowrap; }
+    th { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; background: var(--painel2); position: sticky; top: 0; }
+    tbody tr { border-top: 1px solid var(--borda); }
+    tbody tr:hover { background: rgba(96,165,250,.07); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tfoot td { border-top: 2px solid var(--borda); background: var(--painel2); font-weight: 600; }
+    .chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 7px; }
+    td .mini { padding: 5px 10px; font-size: 12px; margin-right: 6px; }
+    .obs { color: var(--muted); font-size: 11px; }
+
+    #barra-mapa { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--painel);
+                  border-bottom: 1px solid var(--borda); overflow-x: auto; white-space: nowrap; }
+    #info { color: var(--muted); font-size: 12.5px; }
+    #mapa { flex: 1 1 auto; background: #0b1020; }
+
+    .legenda { background: var(--painel2); color: var(--texto); padding: 9px 11px; border-radius: 10px; font-size: 12px; line-height: 19px;
+               border: 1px solid var(--borda); max-width: 235px; }
+    .legenda b { display: block; margin-bottom: 2px; }
+    .legenda .traco { display: inline-block; width: 24px; height: 0; border-top: 4px solid var(--azul); vertical-align: middle; margin-right: 8px; }
+    .legenda .traco.sem { border-top: 3px dashed #9ca3af; }
+    .legenda .bola { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 11px 0 7px; vertical-align: middle; border: 2px solid; }
+    .legenda .dica { margin-top: 4px; color: var(--muted); line-height: 15px; }
+    .leaflet-container { font-family: inherit; }
+    #mapa.escuro .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.7); }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--painel2); color: var(--texto); border: 1px solid var(--borda); }
+    .leaflet-popup-content { margin: 12px 14px; }
+    .leaflet-container a.leaflet-popup-close-button { color: var(--muted); }
+    .resumo { line-height: 18px; font-size: 13px; }
+    .resumo .chip { margin-right: 5px; }
+    .exc { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--borda); font-size: 12px; line-height: 16px; }
+    .exc button { margin: 4px 4px 0 0; padding: 5px 9px; font-size: 12px; }
+    #grafico { flex: 0 0 auto; display: none; background: var(--painel); border-top: 1px solid var(--borda); padding: 8px 12px 6px; }
+    #grafico .cab { display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 4px; }
+    #grafico .cab b { font-size: 13.5px; }
+    #grafico .stat { color: var(--muted); }
+    #grafico .stat strong { color: var(--texto); font-weight: 600; }
+    #grafico .fechar { margin-left: auto; background: transparent; color: var(--muted); padding: 0 8px; font-size: 20px; line-height: 1; }
+    #grafico svg { display: block; width: 100%; touch-action: none; cursor: crosshair; }
+    .gt { fill: var(--muted); font-size: 10.5px; }
+    .gtip { fill: var(--texto); font-size: 11.5px; font-weight: 600; }
+    .peq { padding: 5px 9px; font-size: 12px; }
+    .leaflet-bar a { background: var(--painel2); color: var(--texto); border-color: var(--borda); }
+    .leaflet-control-attribution { background: rgba(11,16,32,.75) !important; color: var(--muted) !important; }
+    .leaflet-control-attribution a { color: var(--azul) !important; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="marca">🚗 Monitoramento do veículo</div>
+    <nav>
+      <button id="nav-inicio" class="ativo" onclick="ir('inicio')">Início</button>
+      <button id="nav-mapa" onclick="ir('mapa')">Mapa</button>
+      <button id="nav-tabela" onclick="ir('tabela')">Viagens</button>
+    </nav>
+    <div class="espaco"></div>
+    <div class="status"><span id="ponto" class="ponto"></span><span id="status-txt">Carregando...</span></div>
+    <button class="sec" onclick="carregar(true)">Atualizar</button>
+  </header>
+
+  <main>
+    <!-- INÍCIO -->
+    <section id="v-inicio" class="tela ativa">
+      <div class="conteudo">
+        <h1>Painel do veículo</h1>
+        <div class="sub" id="sub-inicio">Carregando dados...</div>
+
+        <div class="grade entradas">
+          <button class="entrada" onclick="ir('mapa')"><span class="ico">🗺️</span><b>Abrir o mapa</b><span>Trajetos, paradas e posição do veículo</span></button>
+          <button class="entrada" onclick="ir('tabela')"><span class="ico">📋</span><b>Tabela de viagens</b><span>Saída, chegada, distância e velocidade de cada viagem</span></button>
+        </div>
+
+        <div class="grade kpis" id="kpis"></div>
+
+        <div class="grade duas">
+          <div class="card" id="card-ultima"></div>
+          <div class="card" id="card-semana"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAPA -->
+    <section id="v-mapa" class="tela">
+      <div id="barra-mapa">
+        <select id="dia" onchange="mudouDia()"></select>
+        <select id="viagem" onchange="mudouViagem()"></select>
+        <span id="info">Carregando...</span>
+        <span class="espaco"></span>
+        <button class="sec" onclick="alternarTema()" id="btn-tema">Mapa claro</button>
+        <button class="sec" onclick="centralizar()">Centralizar</button>
+      </div>
+      <div id="mapa"></div>
+      <div id="grafico"></div>
+    </section>
+
+    <!-- TABELA -->
+    <section id="v-tabela" class="tela">
+      <div class="conteudo">
+        <div class="barra-tabela">
+          <div class="tit">Viagens</div>
+          <select id="tdia" onchange="renderTabela()"></select>
+        </div>
+        <div class="rolagem">
+          <table>
+            <thead><tr>
+              <th>Viagem</th><th>Dia</th><th>Saída</th><th>Chegada</th><th class="num">Duração</th><th class="num">Distância</th>
+              <th class="num">Vel. média</th><th class="num">Em movimento</th><th class="num">Paradas</th><th>Ações</th>
+            </tr></thead>
+            <tbody id="corpo"></tbody>
+            <tfoot id="rodape"></tfoot>
+          </table>
+        </div>
+        <div class="obs" style="margin-top:8px">Velocidade média = distância ÷ duração total. "Em movimento" desconsidera o tempo parado. Distância inclui trechos sem sinal em linha reta.</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  var GAP_S = 120;          // intervalo maior que isso entre dois pontos da mesma viagem = trecho sem sinal
+  var PARADA_MIN_S = 120;   // parada mostrada no mapa a partir de 2 minutos
+  var VEL_MOV_KMH = 3;      // a partir daqui conta como "em movimento" na velocidade média
+  var RECENTE_S = 900;      // última posição com menos de 15 min = veículo ativo / viagem em andamento
+  var CORES = ['#60a5fa', '#c084fc', '#2dd4bf', '#f472b6', '#fb923c', '#818cf8', '#a3e635', '#22d3ee'];
+
+  var mapa = null, camada = null, tiles = null, temaMapa = 'escuro';
+  var todos = [], viagens = [];
+  var diaSel = 'ultimo', viagemSel = 'todas', primeiraVez = true, limites = null, ultimaAssinatura = '';
+  var atual = 'inicio', mapaSujo = true;
+  var graficoOculto = false, foco = null;
+
+  function $(id) { return document.getElementById(id); }
+
+  // Horários: a planilha guarda o horário de Brasília (a ESP32 já converte do UTC do GPS).
+  var TZ = 'America/Sao_Paulo';
+  var fmtDia = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ });
+  var fmtCompleto = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, dateStyle: 'short', timeStyle: 'medium' });
+  var fmtHora = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+  var fmtSeg = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, timeStyle: 'medium' });
+  var fmtCurto = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit' });
+
+  function parseBrasilia(t) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(String(t));
+    if (!m) return NaN;
+    // horário de Brasília (UTC-3) -> instante real: soma 3 horas
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + 3 * 3600 * 1000;
+  }
+  function duracao(seg) {
+    seg = Math.round(seg);
+    if (seg < 90) return seg + ' s';
+    var min = Math.round(seg / 60);
+    if (min < 120) return min + ' min';
+    return Math.floor(min / 60) + ' h ' + (min % 60) + ' min';
+  }
+  function ll(p) { return [p.lat, p.lon]; }
+  function km(m) { return (m / 1000).toFixed(2).replace('.', ',') + ' km'; }
+  function kmh(v) { return v.toFixed(1).replace('.', ',') + ' km/h'; }
+  function horaDe(ts, dia) {  // so a hora se for no mesmo dia, senao dd/mm hh:mm
+    var d = new Date(ts);
+    return fmtDia.format(d) === dia ? fmtHora.format(d) : fmtCurto.format(d) + ' ' + fmtHora.format(d);
+  }
+
+  // ---------- navegação ----------
+  function ir(nome) {
+    ['inicio', 'mapa', 'tabela'].forEach(function (n) {
+      $('v-' + n).classList.toggle('ativa', n === nome);
+      $('nav-' + n).classList.toggle('ativo', n === nome);
+    });
+    atual = nome;
+    if (nome === 'mapa') {
+      iniciarMapa();
+      mapa.invalidateSize();
+      if (mapaSujo) { desenhar(true); mapaSujo = false; }
+    }
+  }
+
+  function verTrajeto(n) {
+    var v = viagemPorNumero(n);
+    if (!v) return;
+    diaSel = v.dia;
+    viagemSel = String(n);
+    graficoOculto = false;
+    montarSeletores();
+    mapaSujo = true;
+    ir('mapa');
+  }
+
+  // ---------- carregamento ----------
+  function carregar(manual) {
+    $('status-txt').textContent = 'Carregando...';
+    google.script.run
+      .withSuccessHandler(function (p) { receber(p, manual); })
+      .withFailureHandler(function (e) {
+        $('status-txt').textContent = 'Erro: ' + e.message;
+      })
+      .getPontos();
+  }
+
+  function receber(brutos, manual) {
+    todos = [];
+    brutos.forEach(function (p) {
+      var ts = parseBrasilia(p.t);
+      if (isNaN(ts)) return;
+      p.ts = ts;
+      p.vel = Number(p.vel) || 0;
+      p.v = (p.v === undefined || p.v === null) ? '' : String(p.v);
+      todos.push(p);
+    });
+    todos.sort(function (a, b) { return a.ts - b.ts; });
+
+    // Atualização automática sem dados novos: só atualiza os textos (assim o balão aberto não fecha)
+    var ass = todos.length + ':' + (todos.length ? todos[todos.length - 1].ts : 0);
+    if (!manual && ass === ultimaAssinatura && viagens.length) {
+      renderStatus();
+      $('info').textContent = textoInfo(visiveis());
+      renderInicio();
+      return;
+    }
+    ultimaAssinatura = ass;
+
+    montarViagens();
+    montarSeletores();
+    renderStatus();
+    renderInicio();
+    renderTabela();
+    if (mapa && atual === 'mapa') { desenhar(manual); mapaSujo = false; }
+    else mapaSujo = true;
+  }
+
+  // ---------- viagens: cada vez que a ESP32 liga e uma viagem nova ----------
+  function montarViagens() {
+    var porId = {}, ordem = [], semId = [];
+    todos.forEach(function (p) {
+      if (p.v === '') { semId.push(p); return; }
+      var k = 'v' + p.v;
+      if (!porId[k]) { porId[k] = []; ordem.push(k); }
+      porId[k].push(p);
+    });
+    // pontos antigos, sem numero de viagem: separa por intervalos longos (mais de 10 min)
+    var n = 0, ult = null;
+    semId.forEach(function (p) {
+      if (!ult || (p.ts - ult.ts) / 1000 > 600) { n++; porId['g' + n] = []; ordem.push('g' + n); }
+      porId['g' + n].push(p);
+      ult = p;
+    });
+    viagens = ordem.map(function (k) { return { pts: porId[k] }; });
+    viagens.sort(function (a, b) { return a.pts[0].ts - b.pts[0].ts; });
+    viagens.forEach(function (v, i) {
+      v.numero = i + 1;
+      v.cor = CORES[i % CORES.length];
+      calcular(v);
+      v.dia = fmtDia.format(new Date(v.ini.ts));
+    });
+  }
+
+  function calcular(v) {
+    var pts = v.pts, i;
+    var dist = 0, distSemSinal = 0, tMov = 0, dMov = 0;
+    var segs = [[pts[0]]], lacunas = [];
+    for (i = 1; i < pts.length; i++) {
+      var dt = (pts[i].ts - pts[i - 1].ts) / 1000;
+      var d = L.latLng(ll(pts[i - 1])).distanceTo(L.latLng(ll(pts[i])));
+      dist += d;
+      if (dt > GAP_S) {
+        lacunas.push({ a: pts[i - 1], b: pts[i], d: d });
+        distSemSinal += d;
+        segs.push([pts[i]]);
+      } else {
+        segs[segs.length - 1].push(pts[i]);
+        if (pts[i].vel >= VEL_MOV_KMH) { tMov += dt; dMov += d; }
+      }
+    }
+    v.segs = segs;
+    v.lacunas = lacunas;
+    v.dist = dist;
+    v.distSemSinal = distSemSinal;
+    v.ini = pts[0];
+    v.fim = pts[pts.length - 1];
+    v.duracao = (v.fim.ts - v.ini.ts) / 1000;
+    v.velMedia = v.duracao > 0 ? (dist / 1000) / (v.duracao / 3600) : 0;
+    v.velMov = tMov > 0 ? (dMov / 1000) / (tMov / 3600) : 0;
+
+    // paradas: pontos seguidos com velocidade ~0 por 2 min ou mais
+    v.paradas = [];
+    v.tParado = 0;
+    var a = 0;
+    while (a < pts.length) {
+      if (pts[a].vel < 1) {
+        var b = a;
+        while (b + 1 < pts.length && pts[b + 1].vel < 1 && (pts[b + 1].ts - pts[b].ts) / 1000 <= GAP_S) b++;
+        var seg = (pts[b].ts - pts[a].ts) / 1000;
+        if (seg >= PARADA_MIN_S) { v.paradas.push({ a: pts[a], b: pts[b], seg: seg }); v.tParado += seg; }
+        a = b + 1;
+      } else {
+        a++;
+      }
+    }
+  }
+
+  function emAndamento(v) {
+    return viagens[viagens.length - 1] === v && (Date.now() - v.fim.ts) / 1000 < RECENTE_S;
+  }
+
+  function viagemPorNumero(n) {
+    for (var i = 0; i < viagens.length; i++) if (String(viagens[i].numero) === String(n)) return viagens[i];
+    return null;
+  }
+
+  // ---------- status (topo) ----------
+  function renderStatus() {
+    var pt = $('ponto');
+    if (!todos.length) { pt.className = 'ponto'; $('status-txt').textContent = 'Sem dados na planilha'; return; }
+    var fim = todos[todos.length - 1];
+    var seg = (Date.now() - fim.ts) / 1000;
+    pt.className = 'ponto ' + (seg < RECENTE_S ? 'ok' : (seg < 6 * 3600 ? 'medio' : ''));
+    $('status-txt').textContent = (seg < RECENTE_S ? 'Ativo' : 'Sem dados novos') + ' · última posição há ' + duracao(Math.max(0, seg));
+  }
+
+  // ---------- INÍCIO ----------
+  function kpi(rot, val, det) {
+    return '<div class="card kpi"><div class="rot">' + rot + '</div><div class="val">' + val + '</div><div class="det">' + (det || '&nbsp;') + '</div></div>';
+  }
+
+  function renderInicio() {
+    if (!viagens.length) {
+      $('sub-inicio').textContent = 'Ainda não há pontos na planilha.';
+      $('kpis').innerHTML = '';
+      $('card-ultima').innerHTML = '<h2>Última viagem</h2><div class="vazio">Sem viagens ainda.</div>';
+      $('card-semana').innerHTML = '<h2>Quilômetros por dia</h2><div class="vazio">Sem dados.</div>';
+      return;
+    }
+    var dist = 0, dur = 0, maior = viagens[0], hoje = fmtDia.format(new Date()), kmHoje = 0, nHoje = 0;
+    viagens.forEach(function (v) {
+      dist += v.dist; dur += v.duracao;
+      if (v.dist > maior.dist) maior = v;
+      if (v.dia === hoje) { kmHoje += v.dist; nHoje++; }
+    });
+    var velGeral = dur > 0 ? (dist / 1000) / (dur / 3600) : 0;
+    var fim = todos[todos.length - 1];
+    $('sub-inicio').textContent = 'Última atualização: ' + fmtCompleto.format(new Date(fim.ts)) + ' (horário de Brasília)';
+
+    $('kpis').innerHTML =
+      kpi('Viagens', viagens.length, 'desde ' + viagens[0].dia) +
+      kpi('Distância total', (dist / 1000).toFixed(1).replace('.', ',') + ' <small>km</small>', 'em ' + duracao(dur)) +
+      kpi('Hoje', (kmHoje / 1000).toFixed(1).replace('.', ',') + ' <small>km</small>', nHoje + (nHoje === 1 ? ' viagem' : ' viagens')) +
+      kpi('Velocidade média', velGeral.toFixed(1).replace('.', ',') + ' <small>km/h</small>', 'todas as viagens') +
+      kpi('Maior viagem', (maior.dist / 1000).toFixed(1).replace('.', ',') + ' <small>km</small>', 'Viagem ' + maior.numero + ' · ' + maior.dia);
+
+    var u = viagens[viagens.length - 1];
+    $('card-ultima').innerHTML =
+      '<h2>Última viagem' + (emAndamento(u) ? ' · em andamento?' : '') + '</h2>' +
+      '<div class="linha"><span>Viagem</span><b><span class="chip" style="background:' + u.cor + '"></span>' + u.numero + '</b></div>' +
+      '<div class="linha"><span>Saída</span><span>' + fmtCompleto.format(new Date(u.ini.ts)) + '</span></div>' +
+      '<div class="linha"><span>Chegada</span><span>' + fmtCompleto.format(new Date(u.fim.ts)) + '</span></div>' +
+      '<div class="linha"><span>Distância</span><span>' + km(u.dist) + '</span></div>' +
+      '<div class="linha"><span>Velocidade média</span><span>' + kmh(u.velMedia) + '</span></div>' +
+      '<div class="linha"><span>Última posição</span><span>' + fim.lat.toFixed(5) + ', ' + fim.lon.toFixed(5) + '</span></div>' +
+      '<div class="acoes"><button onclick="verTrajeto(' + u.numero + ')">Ver no mapa</button>' +
+      '<button class="sec" onclick="ir(\'tabela\')">Todas as viagens</button></div>';
+
+    // quilometros por dia, ultimos 7 dias
+    var dias7 = [], i;
+    for (i = 6; i >= 0; i--) {
+      var d = new Date(Date.now() - i * 86400000);
+      dias7.push({ dia: fmtDia.format(d), rot: fmtCurto.format(d), m: 0 });
+    }
+    viagens.forEach(function (v) { dias7.forEach(function (x) { if (x.dia === v.dia) x.m += v.dist; }); });
+    var max = 0; dias7.forEach(function (x) { if (x.m > max) max = x.m; });
+    var h = '<h2>Quilômetros por dia (7 dias)</h2><div class="barras">';
+    dias7.forEach(function (x) {
+      var alt = max > 0 ? Math.max(2, Math.round(x.m / max * 80)) : 2;
+      h += '<div class="barra"><strong>' + (x.m > 0 ? (x.m / 1000).toFixed(1).replace('.', ',') : '') + '</strong>' +
+           '<i class="' + (x.m > 0 ? '' : 'zero') + '" style="height:' + alt + '%"></i><em>' + x.rot + '</em></div>';
+    });
+    $('card-semana').innerHTML = h + '</div>';
+  }
+
+  // ---------- TABELA ----------
+  function dias() {
+    var r = [];
+    viagens.forEach(function (v) { if (r.indexOf(v.dia) < 0) r.push(v.dia); });
+    return r;  // ordem cronologica
+  }
+
+  function renderTabela() {
+    var sel = $('tdia'), atualVal = sel.value || 'todos', d = dias(), i, o;
+    sel.innerHTML = '';
+    o = document.createElement('option'); o.value = 'todos'; o.textContent = 'Todos os dias'; sel.appendChild(o);
+    for (i = d.length - 1; i >= 0; i--) { o = document.createElement('option'); o.value = d[i]; o.textContent = d[i]; sel.appendChild(o); }
+    sel.value = (atualVal === 'todos' || d.indexOf(atualVal) >= 0) ? atualVal : 'todos';
+
+    var lista = viagens.filter(function (v) { return sel.value === 'todos' || v.dia === sel.value; }).slice().reverse();
+    if (!lista.length) {
+      $('corpo').innerHTML = '<tr><td colspan="10" class="vazio">Nenhuma viagem.</td></tr>';
+      $('rodape').innerHTML = '';
+      return;
+    }
+    var h = '', dist = 0, dur = 0, par = 0;
+    lista.forEach(function (v) {
+      dist += v.dist; dur += v.duracao; par += v.paradas.length;
+      h += '<tr>' +
+        '<td><span class="chip" style="background:' + v.cor + '"></span><b>' + v.numero + '</b>' + (emAndamento(v) ? ' <span class="obs">em andamento?</span>' : '') + '</td>' +
+        '<td>' + v.dia + '</td>' +
+        '<td>' + horaDe(v.ini.ts, v.dia) + '</td>' +
+        '<td>' + horaDe(v.fim.ts, v.dia) + '</td>' +
+        '<td class="num">' + duracao(v.duracao) + '</td>' +
+        '<td class="num">' + km(v.dist) + '</td>' +
+        '<td class="num">' + kmh(v.velMedia) + '</td>' +
+        '<td class="num">' + kmh(v.velMov) + '</td>' +
+        '<td class="num">' + v.paradas.length + (v.paradas.length ? ' <span class="obs">(' + duracao(v.tParado) + ')</span>' : '') + '</td>' +
+        '<td><button class="mini" onclick="verTrajeto(' + v.numero + ')">Ver no mapa</button>' +
+        '<button class="mini sec" onclick="excluirDaTabela(this,' + v.numero + ')">Excluir</button></td>' +
+        '</tr>';
+    });
+    $('corpo').innerHTML = h;
+    var velTot = dur > 0 ? (dist / 1000) / (dur / 3600) : 0;
+    $('rodape').innerHTML = '<tr><td colspan="4">Total · ' + lista.length + (lista.length === 1 ? ' viagem' : ' viagens') + '</td>' +
+      '<td class="num">' + duracao(dur) + '</td><td class="num">' + km(dist) + '</td><td class="num">' + kmh(velTot) + '</td><td></td>' +
+      '<td class="num">' + par + '</td><td></td></tr>';
+  }
+
+  // Excluir pela tabela: 1o clique pede confirmacao no proprio botao, 2o clique apaga
+  function excluirDaTabela(btn, n) {
+    if (btn.dataset.pronto !== '1') {
+      btn.dataset.pronto = '1';
+      btn.className = 'mini perigo';
+      btn.textContent = 'Confirmar?';
+      setTimeout(function () {
+        if (btn.dataset.pronto === '1' && document.body.contains(btn)) { btn.dataset.pronto = ''; btn.className = 'mini sec'; btn.textContent = 'Excluir'; }
+      }, 4000);
+      return;
+    }
+    btn.textContent = 'Excluindo...';
+    btn.disabled = true;
+    executarExclusao(n, function () {}, function (e) {
+      btn.disabled = false; btn.dataset.pronto = ''; btn.className = 'mini sec'; btn.textContent = 'Erro: ' + e.message;
+    });
+  }
+
+  // ---------- excluir viagem (apaga as linhas da viagem na planilha) ----------
+  function executarExclusao(n, ok, erro) {
+    var v = viagemPorNumero(n);
+    if (!v) return;
+    var itens = v.pts.map(function (p) { return { r: p.r, t: p.t }; });
+    google.script.run
+      .withSuccessHandler(function (qtd) {
+        if (mapa) mapa.closePopup();
+        viagemSel = 'todas';
+        ok(qtd);
+        carregar(true);
+      })
+      .withFailureHandler(erro)
+      .excluirViagem(itens);
+  }
+
+  // Troca o conteudo depois do clique terminar: se o botao clicado sumir durante o clique,
+  // o Leaflet acha que foi um clique no mapa e fecha o balao.
+  function trocar(caixa, html) {
+    setTimeout(function () { caixa.innerHTML = html; }, 0);
+  }
+
+  function botaoExcluir(n) {
+    return '<button class="perigo" onclick="pedirExclusao(this,' + n + ')">Excluir viagem</button>';
+  }
+
+  function pedirExclusao(el, n) {
+    var v = viagemPorNumero(n);
+    if (!v) return;
+    trocar(el.parentNode,
+      'Apagar a <b>viagem ' + n + '</b> (' + v.pts.length + ' pontos) da planilha? Não dá para desfazer.' +
+      (emAndamento(v) ? '<br><span class="obs">Ela pode estar em andamento: os próximos pontos enviados pela ESP32 vão aparecer de novo.</span>' : '') +
+      '<br><button class="perigo" onclick="confirmarExclusao(this,' + n + ')">Sim, excluir</button>' +
+      '<button class="cinza" onclick="cancelarExclusao(this,' + n + ')">Cancelar</button>');
+  }
+
+  function cancelarExclusao(el, n) {
+    trocar(el.parentNode, botaoExcluir(n));
+  }
+
+  function confirmarExclusao(el, n) {
+    var caixa = el.parentNode;
+    trocar(caixa, 'Excluindo...');
+    executarExclusao(n, function () {}, function (e) {
+      caixa.innerHTML = 'Erro ao excluir: ' + e.message + '<br>' + botaoExcluir(n);
+    });
+  }
+
+  // ---------- mapa ----------
+  function iniciarMapa() {
+    if (mapa) return;
+    mapa = L.map('mapa').setView([-18.91, -48.27], 13);
+    try { if (localStorage.getItem('temaMapa') === 'claro') temaMapa = 'claro'; } catch (e) {}
+    aplicarTema();
+    camada = L.layerGroup().addTo(mapa);
+    foco = L.layerGroup().addTo(mapa);   // ponto destacado pelo grafico de velocidade
+
+    var legenda = L.control({ position: 'bottomleft' });
+    legenda.onAdd = function () {
+      var d = L.DomUtil.create('div', 'legenda');
+      d.innerHTML =
+        '<b>Legenda</b>' +
+        '<span class="traco"></span>Trajeto (cada viagem tem uma cor)<br>' +
+        '<span class="traco sem"></span>Trecho sem sinal (linha reta)<br>' +
+        '<span class="bola" style="background:#34d399;border-color:#065f46"></span>Saída<br>' +
+        '<span class="bola" style="background:#f87171;border-color:#991b1b"></span>Chegada / última posição<br>' +
+        '<span class="bola" style="background:#fbbf24;border-color:#b45309"></span>Parada (2 min ou mais)' +
+        '<div class="dica">Toque no trajeto de uma viagem para ver saída, chegada, distância e velocidade média.</div>';
+      return d;
+    };
+    legenda.addTo(mapa);
+  }
+
+  function aplicarTema() {
+    if (tiles) mapa.removeLayer(tiles);
+    // Tema escuro: mesmo mapa da OpenStreetMap, com as imagens escurecidas por filtro (nao precisa de chave de API)
+    tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+    tiles.addTo(mapa);
+    tiles.bringToBack();
+    $('mapa').classList.toggle('escuro', temaMapa === 'escuro');
+    $('btn-tema').textContent = temaMapa === 'escuro' ? 'Mapa claro' : 'Mapa escuro';
+  }
+
+  function alternarTema() {
+    temaMapa = temaMapa === 'escuro' ? 'claro' : 'escuro';
+    try { localStorage.setItem('temaMapa', temaMapa); } catch (e) {}
+    aplicarTema();
+  }
+
+  function resumo(v) {
+    var recente = emAndamento(v);
+    return '<div class="resumo"><span class="chip" style="background:' + v.cor + '"></span><b>Viagem ' + v.numero + '</b><br>' +
+      'Saída: ' + fmtCompleto.format(new Date(v.ini.ts)) + '<br>' +
+      'Chegada: ' + fmtCompleto.format(new Date(v.fim.ts)) + (recente ? ' <span class="obs">(última posição recebida; pode estar em andamento)</span>' : '') + '<br>' +
+      'Duração: ' + duracao(v.duracao) + '<br>' +
+      'Distância: ' + km(v.dist) + (v.lacunas.length ? ' <span class="obs">(inclui ' + km(v.distSemSinal) + ' sem sinal, em linha reta)</span>' : '') + '<br>' +
+      'Velocidade média: ' + kmh(v.velMedia) + '<br>' +
+      'Velocidade média em movimento: ' + kmh(v.velMov) + '<br>' +
+      'Paradas: ' + v.paradas.length + (v.paradas.length ? ' (' + duracao(v.tParado) + ' no total)' : '') +
+      '<div style="margin-top:8px"><button class="sec peq" onclick="verGrafico(' + v.numero + ')">Ver gráfico de velocidade</button></div>' +
+      '<div class="exc">' + botaoExcluir(v.numero) + '</div></div>';
+  }
+
+  function diaEscolhido() {
+    var d = dias();
+    if (diaSel === 'todos') return 'todos';
+    if (diaSel === 'ultimo' || d.indexOf(diaSel) < 0) return d.length ? d[d.length - 1] : 'todos';
+    return diaSel;
+  }
+
+  function viagensDoDia() {
+    var dia = diaEscolhido();
+    return viagens.filter(function (v) { return dia === 'todos' || v.dia === dia; });
+  }
+
+  function montarSeletores() {
+    var sd = $('dia'), sv = $('viagem');
+    var d = dias(), i, o;
+
+    sd.innerHTML = '';
+    o = document.createElement('option'); o.value = 'todos'; o.textContent = 'Todos os dias'; sd.appendChild(o);
+    for (i = d.length - 1; i >= 0; i--) {
+      o = document.createElement('option'); o.value = d[i]; o.textContent = d[i]; sd.appendChild(o);
+    }
+    sd.value = diaEscolhido();
+
+    var doDia = viagensDoDia();
+    if (viagemSel !== 'todas' && !doDia.some(function (v) { return String(v.numero) === String(viagemSel); })) viagemSel = 'todas';
+    sv.innerHTML = '';
+    o = document.createElement('option'); o.value = 'todas'; o.textContent = 'Todas as viagens'; sv.appendChild(o);
+    doDia.forEach(function (v) {
+      o = document.createElement('option');
+      o.value = String(v.numero);
+      o.textContent = 'Viagem ' + v.numero + ' · ' + fmtHora.format(new Date(v.ini.ts)) + '–' + fmtHora.format(new Date(v.fim.ts)) + ' · ' + km(v.dist);
+      sv.appendChild(o);
+    });
+    sv.value = String(viagemSel);
+  }
+
+  function mudouDia() {
+    diaSel = $('dia').value;
+    viagemSel = 'todas';
+    graficoOculto = false;
+    montarSeletores();
+    desenhar(true);
+  }
+
+  function mudouViagem() {
+    viagemSel = $('viagem').value;
+    graficoOculto = false;
+    desenhar(true);
+  }
+
+  function visiveis() {
+    return viagensDoDia().filter(function (v) { return viagemSel === 'todas' || String(v.numero) === String(viagemSel); });
+  }
+
+  function desenharViagem(v) {
+    var html = resumo(v);
+
+    v.segs.forEach(function (s) {
+      if (s.length > 1) {
+        var c = s.map(ll);
+        L.polyline(c, { color: v.cor, weight: 4 }).addTo(camada);
+        // linha larga e invisivel por cima, so para facilitar o toque
+        L.polyline(c, { color: v.cor, weight: 22, opacity: 0 }).addTo(camada).bindPopup(html);
+      } else {
+        L.circleMarker(ll(s[0]), { radius: 4, color: v.cor, weight: 1, fillOpacity: 1 }).addTo(camada).bindPopup(html);
+      }
+    });
+
+    v.lacunas.forEach(function (g) {
+      L.polyline([ll(g.a), ll(g.b)], { color: '#9ca3af', weight: 3, dashArray: '6 8' })
+        .addTo(camada)
+        .bindPopup('<div class="resumo"><b>Viagem ' + v.numero + '</b><br>Sem sinal por ' + duracao((g.b.ts - g.a.ts) / 1000) +
+                   '<br>' + fmtHora.format(new Date(g.a.ts)) + ' a ' + fmtHora.format(new Date(g.b.ts)) + '</div>');
+    });
+
+    v.paradas.forEach(function (p) {
+      L.circleMarker(ll(p.a), { radius: 7, color: '#b45309', fillColor: '#fbbf24', fillOpacity: 1 })
+        .addTo(camada)
+        .bindPopup('<div class="resumo"><b>Viagem ' + v.numero + '</b><br>Parada de ' + duracao(p.seg) + '<br>' +
+                   fmtHora.format(new Date(p.a.ts)) + ' a ' + fmtHora.format(new Date(p.b.ts)) + '</div>');
+    });
+
+    L.circleMarker(ll(v.ini), { radius: 8, color: '#065f46', fillColor: '#34d399', fillOpacity: 1 })
+      .addTo(camada).bindPopup(html);
+    L.circleMarker(ll(v.fim), { radius: 9, color: '#991b1b', fillColor: '#f87171', fillOpacity: 1 })
+      .addTo(camada).bindPopup(html);
+  }
+
+  function desenhar(manual) {
+    camada.clearLayers();
+    renderGrafico();
+    var vis = visiveis();
+    if (!vis.length) {
+      $('info').textContent = 'Sem pontos na planilha ainda.';
+      limites = null;
+      return;
+    }
+
+    var todosPts = [];
+    vis.forEach(function (v) {
+      desenharViagem(v);
+      v.pts.forEach(function (p) { todosPts.push(p); });
+    });
+    $('info').textContent = textoInfo(vis);
+
+    limites = L.latLngBounds(todosPts.map(ll));
+    if (primeiraVez || manual) { centralizar(); primeiraVez = false; }
+  }
+
+  function textoInfo(vis) {
+    if (!vis.length) return 'Sem pontos na planilha ainda.';
+    var dist = 0;
+    vis.forEach(function (v) { dist += v.dist; });
+    var fim = vis[vis.length - 1].fim;
+    return vis.length + (vis.length === 1 ? ' viagem' : ' viagens') + ' | ' + km(dist) + ' | última posição: ' +
+           fmtCompleto.format(new Date(fim.ts)) + ' | ' + fim.vel.toFixed(0) + ' km/h';
+  }
+
+  // ---------- grafico de velocidade da viagem (aparece quando ha uma so viagem na tela) ----------
+  function verGrafico(n) {
+    var v = viagemPorNumero(n);
+    if (!v) return;
+    diaSel = v.dia;
+    viagemSel = String(n);
+    graficoOculto = false;
+    montarSeletores();
+    mapa.closePopup();
+    desenhar(true);
+  }
+
+  function fecharGrafico() {
+    graficoOculto = true;
+    renderGrafico();
+  }
+
+  function pontoMaisProximo(pts, t) {
+    var a = 0, b = pts.length - 1;
+    while (b - a > 1) {
+      var m = (a + b) >> 1;
+      if (pts[m].ts < t) a = m; else b = m;
+    }
+    return Math.abs(pts[a].ts - t) <= Math.abs(pts[b].ts - t) ? pts[a] : pts[b];
+  }
+
+  function renderGrafico() {
+    var box = $('grafico');
+    var vis = visiveis();
+    var mostrar = !!mapa && vis.length === 1 && !graficoOculto;
+    var estava = box.style.display === 'block';
+    if (foco) foco.clearLayers();
+    if (!mostrar) {
+      box.style.display = 'none';
+      if (estava && mapa) mapa.invalidateSize();
+      return;
+    }
+    var v = vis[0];
+    box.style.display = 'block';
+    if (!estava) mapa.invalidateSize();
+
+    var W = Math.max(280, box.clientWidth - 24), H = 132;
+    var ml = 36, mr = 10, mt = 8, mb = 20, iw = W - ml - mr, ih = H - mt - mb;
+    var t0 = v.ini.ts, span = Math.max(1, v.fim.ts - t0);
+    function X(t) { return ml + (t - t0) / span * iw; }
+    var vmax = 0;
+    v.pts.forEach(function (p) { if (p.vel > vmax) vmax = p.vel; });
+    var ymax = Math.max(20, Math.ceil(vmax / 20) * 20);
+    function Y(s) { return mt + ih - (s / ymax) * ih; }
+    function f(n) { return n.toFixed(1); }
+
+    var svg = '<svg id="gsvg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">', i;
+    for (i = 0; i <= 4; i++) {
+      var val = ymax / 4 * i, y = Y(val);
+      svg += '<line x1="' + ml + '" x2="' + (ml + iw) + '" y1="' + f(y) + '" y2="' + f(y) + '" stroke="#243152" stroke-width="1"/>' +
+             '<text class="gt" x="' + (ml - 6) + '" y="' + f(y + 3.5) + '" text-anchor="end">' + Math.round(val) + '</text>';
+    }
+    v.lacunas.forEach(function (g) {
+      var x1 = X(g.a.ts), x2 = X(g.b.ts);
+      svg += '<rect x="' + f(x1) + '" y="' + mt + '" width="' + f(Math.max(2, x2 - x1)) + '" height="' + ih + '" fill="#9ca3af" opacity=".2"/>';
+    });
+    v.paradas.forEach(function (p) {
+      var x1 = X(p.a.ts), x2 = X(p.b.ts);
+      svg += '<rect x="' + f(x1) + '" y="' + mt + '" width="' + f(Math.max(2, x2 - x1)) + '" height="' + ih + '" fill="#fbbf24" opacity=".22"/>';
+    });
+    v.segs.forEach(function (s) {
+      if (s.length < 2) { svg += '<circle cx="' + f(X(s[0].ts)) + '" cy="' + f(Y(s[0].vel)) + '" r="2" fill="' + v.cor + '"/>'; return; }
+      var d = '';
+      s.forEach(function (p, k) { d += (k ? 'L' : 'M') + f(X(p.ts)) + ',' + f(Y(p.vel)); });
+      svg += '<path d="' + d + 'L' + f(X(s[s.length - 1].ts)) + ',' + f(Y(0)) + 'L' + f(X(s[0].ts)) + ',' + f(Y(0)) + 'Z" fill="' + v.cor + '" opacity=".18"/>' +
+             '<path d="' + d + '" fill="none" stroke="' + v.cor + '" stroke-width="2" stroke-linejoin="round"/>';
+    });
+    svg += '<text class="gt" x="' + ml + '" y="' + (H - 5) + '">' + fmtHora.format(new Date(v.ini.ts)) + '</text>' +
+           '<text class="gt" x="' + f(ml + iw / 2) + '" y="' + (H - 5) + '" text-anchor="middle">' + fmtHora.format(new Date(t0 + span / 2)) + '</text>' +
+           '<text class="gt" x="' + (ml + iw) + '" y="' + (H - 5) + '" text-anchor="end">' + fmtHora.format(new Date(v.fim.ts)) + '</text>' +
+           '<g id="gcur" style="display:none"><line id="glin" y1="' + mt + '" y2="' + (mt + ih) + '" stroke="#e5e9f5" stroke-opacity=".5"/>' +
+           '<circle id="gpt" r="4.5" fill="' + v.cor + '" stroke="#fff" stroke-width="1.5"/><text id="gtxt" class="gtip" y="' + (mt + 11) + '"></text></g></svg>';
+
+    box.innerHTML =
+      '<div class="cab"><span><span class="chip" style="background:' + v.cor + '"></span><b>Viagem ' + v.numero + ' · velocidade</b></span>' +
+      '<span class="stat">Máx <strong>' + Math.round(vmax) + ' km/h</strong></span>' +
+      '<span class="stat">Média <strong>' + kmh(v.velMedia) + '</strong></span>' +
+      '<span class="stat">Em movimento <strong>' + kmh(v.velMov) + '</strong></span>' +
+      '<span class="stat">Faixa amarela = parada · cinza = sem sinal</span>' +
+      '<button class="fechar" title="Fechar" onclick="fecharGrafico()">×</button></div>' + svg;
+
+    var el = $('gsvg'), cur = $('gcur'), lin = $('glin'), pt = $('gpt'), txt = $('gtxt');
+    function mover(ev) {
+      var r = el.getBoundingClientRect();
+      var x = Math.min(ml + iw, Math.max(ml, ev.clientX - r.left));
+      var p = pontoMaisProximo(v.pts, t0 + (x - ml) / iw * span);
+      var px = X(p.ts);
+      cur.style.display = '';
+      lin.setAttribute('x1', px); lin.setAttribute('x2', px);
+      pt.setAttribute('cx', px); pt.setAttribute('cy', Y(p.vel));
+      txt.textContent = fmtSeg.format(new Date(p.ts)) + ' · ' + Math.round(p.vel) + ' km/h';
+      if (px > W * 0.6) { txt.setAttribute('x', px - 8); txt.setAttribute('text-anchor', 'end'); }
+      else { txt.setAttribute('x', px + 8); txt.setAttribute('text-anchor', 'start'); }
+      foco.clearLayers();
+      L.circleMarker(ll(p), { radius: 8, color: '#ffffff', weight: 2, fillColor: v.cor, fillOpacity: 1 }).addTo(foco);
+    }
+    function sair() { cur.style.display = 'none'; foco.clearLayers(); }
+    el.addEventListener('pointermove', mover);
+    el.addEventListener('pointerdown', mover);
+    el.addEventListener('pointerleave', sair);
+  }
+
+  var tRedim = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(tRedim);
+    tRedim = setTimeout(function () {
+      if (atual === 'mapa' && mapa) { mapa.invalidateSize(); renderGrafico(); }
+    }, 150);
+  });
+
+  function centralizar() {
+    if (!mapa || !limites) return;
+    if (limites.getNorthEast().equals(limites.getSouthWest())) mapa.setView(limites.getCenter(), 17);
+    else mapa.fitBounds(limites, { padding: [30, 30] });
+  }
+
+  carregar(false);
+  setInterval(function () { carregar(false); }, 60000);  // atualiza a cada 1 min
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# arquivos locais e de build
+*.bin
+*.elf
+build/
+.vscode/
+.DS_Store
+# nunca versionar credenciais reais
+secrets.h
+*.local.ino
